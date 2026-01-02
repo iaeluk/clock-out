@@ -21,18 +21,25 @@
             --hard-shadow: 3px 3px 0px var(--deep-teal);
         }
 
-        html { touch-action: manipulation; }
+        /* --- BLOQUEIO TOTAL DE ZOOM E SCROLL ELÁSTICO --- */
+        html {
+            touch-action: manipulation; /* Impede gestos de zoom do browser */
+            height: 100%;
+            overflow: hidden; /* Impede rolagem */
+        }
         
         body {
             margin: 0; padding: 0;
-            min-height: 100vh;
+            height: 100%;
+            width: 100%;
+            position: fixed; /* Trava o corpo da página */
             display: flex;
             align-items: center;
             justify-content: center;
             background: linear-gradient(135deg, var(--flamingo-pink) 0%, #FFD166 100%);
             font-family: 'Quicksand', sans-serif;
             color: var(--deep-teal);
-            overflow: hidden;
+            overscroll-behavior: none; /* Impede efeito elástico no Android/iOS */
         }
 
         body::before {
@@ -48,8 +55,8 @@
         .card {
             background: var(--white);
             width: 85%;
-            max-width: 280px; /* Largura reduzida drasticamente */
-            padding: 20px 15px; /* Padding reduzido */
+            max-width: 280px; 
+            padding: 20px 15px; 
             border-radius: 30px;
             border: 3px solid var(--deep-teal);
             box-shadow: 6px 6px 0px rgba(26, 83, 92, 0.2);
@@ -64,7 +71,7 @@
             height: 80px;
             background: var(--pool-blue);
             border-radius: 50%;
-            margin: -50px auto 10px auto; /* Ajuste de posição */
+            margin: -50px auto 10px auto; 
             border: 3px solid var(--deep-teal);
             box-shadow: var(--hard-shadow);
             position: relative;
@@ -150,17 +157,19 @@
 
         input {
             width: 100%;
-            padding: 8px; /* Menos padding */
+            padding: 8px; 
             border-radius: 40px;
             border: 2px solid var(--deep-teal);
             background: #F0FDF4;
             color: var(--deep-teal);
             font-family: 'Quicksand', sans-serif;
             font-weight: 700;
-            font-size: 1.1rem; /* Fonte menor */
+            font-size: 1.1rem; 
             text-align: center;
             outline: none;
             box-shadow: var(--hard-shadow);
+            /* Garante que o input funcione mesmo com bloqueios globais */
+            touch-action: manipulation; 
         }
 
         /* Radio Compacto */
@@ -212,11 +221,21 @@
             box-shadow: var(--hard-shadow);
             color: var(--white);
             position: relative;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
         }
 
+        .result-box:active {
+            transform: translate(2px, 2px);
+            box-shadow: 1px 1px 0px var(--deep-teal);
+        }
+
+        /* Ícone de Alarme */
         .result-box::after {
-            content: ''; position: absolute; top: 6px; right: 6px;
-            width: 6px; height: 6px; background: rgba(255,255,255,0.5); border-radius: 50%;
+            content: '⏰';
+            position: absolute; 
+            top: 6px; right: 8px;
+            font-size: 12px;
         }
 
         .result-title {
@@ -274,11 +293,11 @@
             <div class="radio-container">
                 <label class="radio-label">
                     <input type="radio" name="balanceType" value="credit" checked onchange="calc()">
-                    <span class="radio-text">Sair mais cedo</span>
+                    <span class="radio-text">Sair cedo</span>
                 </label>
                 <label class="radio-label">
                     <input type="radio" name="balanceType" value="debit" onchange="calc()">
-                    <span class="radio-text">Sair mais tarde</span>
+                    <span class="radio-text">Sair tarde</span>
                 </label>
             </div>
             <div style="margin-top: 8px;">
@@ -287,8 +306,8 @@
             </div>
         </div>
 
-        <!-- Resultado -->
-        <div class="result-box">
+        <!-- Resultado com Ação de Alarme -->
+        <div class="result-box" onclick="setAndroidAlarm()" title="Definir Alarme">
             <span class="result-title">Saída Prevista</span>
             <span class="result-value" id="result">--:--</span>
         </div>
@@ -303,14 +322,27 @@
         const radioButtons = document.getElementsByName('balanceType');
         const WORK_MINUTES = 9 * 60; 
 
-        document.addEventListener('gesturestart', function(e) { e.preventDefault(); });
+        /* BLOQUEIO AGRESSIVO DE ZOOM 
+           Previne pinch-zoom e double-tap zoom
+        */
+        document.addEventListener('gesturestart', function(e) {
+            e.preventDefault();
+        });
+        
+        document.addEventListener('touchmove', function(event) {
+            if (event.scale !== 1) { event.preventDefault(); }
+        }, { passive: false });
+
         let lastTouchEnd = 0;
         document.addEventListener('touchend', function (event) {
             const now = (new Date()).getTime();
-            if (now - lastTouchEnd <= 300) event.preventDefault();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
             lastTouchEnd = now;
         }, false);
 
+        // Lógica de Tempo
         function parseTime(val) {
             if (!val) return 0;
             const clean = val.replace(/[^\d:]/g, '');
@@ -353,6 +385,24 @@
             resultDisplay.textContent = `${String(finalH).padStart(2,'0')}:${String(finalM).padStart(2,'0')}`;
         }
 
+        // --- FUNÇÃO DE ALARME ANDROID (INTENT) ---
+        function setAndroidAlarm() {
+            const timeText = resultDisplay.textContent;
+            if (timeText === "--:--" || !timeText) return;
+
+            const [h, m] = timeText.split(':').map(Number);
+
+            // Tenta abrir o alarme via Intent do Android
+            // Action: android.intent.action.SET_ALARM
+            // Extras: i.hour, i.minutes, S.message, B.skipUi
+            
+            // Construção da URL Intent
+            const intentUrl = `intent:#Intent;action=android.intent.action.SET_ALARM;i.hour=${h};i.minutes=${m};S.message=Saida do Ponto;B.skipUi=true;end`;
+            
+            // Redireciona para a Intent (o Android intercepta isso)
+            window.location.href = intentUrl;
+        }
+
         balanceInput.addEventListener('input', (e) => {
             let v = e.target.value.replace(/\D/g, '');
             if (v.length >= 3) {
@@ -382,5 +432,4 @@
     </script>
 </body>
 </html>
-
 
